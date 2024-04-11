@@ -223,7 +223,7 @@ void plotPathLineStoreInPath(std::vector<Point>& Path, std::vector<double>S, dou
     } while (D1 > 0.2);
 }
 //起点的位置和方向，终点的位置和方向，画圆的半径  返回参数S
-void planning(posVector start, posVector end, std::vector<double>& S, double radius = 1.0)
+void planning(posVector start, posVector end, std::vector<Point>& Path, double radius = 1.0)
 {
     //找起点的圆
     double sox, soy, eox, eoy;
@@ -323,7 +323,7 @@ void planning(posVector start, posVector end, std::vector<double>& S, double rad
     }
     auto minIndex = min_element(a.begin(), a.end()) - a.begin();
     //cout << minIndex << endl;
-
+    std::vector<double> S;
     S.push_back(start.position.x);//0 1 起点坐标
     S.push_back(start.position.y);
     S.push_back(sox);//2 3 起点圆心坐标
@@ -361,7 +361,7 @@ void planning(posVector start, posVector end, std::vector<double>& S, double rad
 
     //////////////////////////
     //Robot轨迹点
-    std::vector<Point>Path;
+    /*std::vector<Point>Path;*/
 
     //Robot从起点到起点圆切点，走圆弧，算走圆弧的步长
     std::vector<double>v0 = { S[0] - S[2],S[1] - S[3] };//起点圆指向起点的向量
@@ -429,7 +429,7 @@ int main()
 {
     posVector start = { 10,0,0,-1 };
     posVector end = { 6.5,1.8,1,0 };
-    std:vector<double>output;
-    planning(start, end, output);
+    std::vector<Point>Path;
+    planning(start, end, Path);
 
 }
