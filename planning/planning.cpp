@@ -6,6 +6,10 @@
 #include<vector>
 #include<matplotlibcpp.h>
 
+#define radStepLen 0.1 //圆弧上Robot走的步长
+#define lineStepLen 0.4 //直线Robot走的步长
+//#define sgn(x) (x>0)-(x<0)
+
 using namespace std;
 namespace plt = matplotlibcpp;
 
@@ -28,6 +32,17 @@ struct posVector
 //     double ea[2]; //终点位置时机器人朝向的方向矢量
 // }POINTCP;
 
+double sgn(double x)
+{
+    if (x > 0)
+    {
+        return 1;
+    }
+    else
+    {
+        return -1;
+    }
+}
 
 //计算一个向量的两个切圆
 std::tuple<double, double, double, double>tangentCircleCenter(::Point position, double direct[2], double r = 1)
@@ -62,7 +77,7 @@ std::tuple<double, double, double, double>tangentCircleCenter(::Point position, 
 //计算两点的距离
 double disPointToPoint(double a1, double b1, double a2, double b2)
 {
-    return pow(a1 - a2, 2) + pow(b1 - b2, 2);
+    return sqrt(pow(a1 - a2, 2) + pow(b1 - b2, 2));
 }
 std::tuple<double, double> findNearCircle(posVector start, posVector end)
 {
@@ -115,7 +130,8 @@ double angleBetweenPoints(double ax,double ay, double bx,double by)
     double dot = ax * bx + ay * by;
     double len1 = sqrt(ax * ax + ay * ay);
     double len2 = sqrt(bx * bx + by * by);
-    return acos(dot / (len1 * len2));
+    double cosV = acos(dot / (len1 * len2));
+    return cosV;
 }
 void plotCircle(double a, double b, double r)
 {
@@ -128,8 +144,86 @@ void plotCircle(double a, double b, double r)
     }
     plt::plot(x, y);
 }
+void plotPathCircleStoreInPath(std::vector<Point>&Path,std::vector<double>S,double alpha,int startInd,int endInd,double radius,double sgnk,double da)
+{
+    double x0 = S[startInd];
+    double y0 = S[startInd+1];
+    double D1 = 100;
+    double cox, coy;//画的圆心
+    double L = radius * alpha; //弧长
+    //double da = alpha / (trunc(L / radStepLen) + 1);
+    do
+    {
+        alpha += sgnk * da;
+        double abs_a = abs(alpha);
+        if (alpha > -M_PI / 2 && alpha <= 0)
+        {
+            cox = x0 + radius * cos(abs_a);
+            coy = y0 + radius * sin(abs_a);
+        }
+        else if (alpha > -M_PI && alpha <= -M_PI / 2)
+        {
+            cox = x0 - radius * cos(M_PI - abs_a);
+            coy = y0 + radius * sin(M_PI - abs_a);
+        }
+        else if (alpha >= 0 && alpha < M_PI / 2)
+        {
+            cox = x0 + radius * cos(abs_a);
+            coy = y0 - radius * sin(abs_a);
+        }
+        else
+        {
+            cox = x0 - radius * cos(M_PI - abs_a);
+            coy = y0 - radius * sin(M_PI - abs_a);
+        }
+        Point newP = { cox,coy };
+        Path.push_back(newP);
+        plotCircle(cox, coy, da * radius);//每走一步画一个圆
+        D1 = disPointToPoint(cox, coy, S[endInd], S[endInd+1]);
+    } while (D1 > 0.05);
+}
+void plotPathLineStoreInPath(std::vector<Point>& Path, std::vector<double>S, double alpha, int startInd, int endInd, double dl)
+{
+    int k = 1;
+    double x0 = S[startInd];//假设沿起点圆弧的最后位置点与起点圆上的切点位置很近，
+    double y0 = S[startInd+1];//所以将起点圆上的切点作为临时的直线运动的起点
+    double abs_a = abs(alpha);
+    double cox, coy;//画的圆心
+    //沿直线运动的轨迹
+    double D1 = 100;
+    do
+    {
+        if (alpha > -M_PI / 2 && alpha <= 0)
+        {
+            cox = x0 + k * dl * cos(abs_a);
+            coy = y0 + k * dl * sin(abs_a);
+        }
+        else if (alpha > -M_PI && alpha <= -M_PI / 2)
+        {
+            cox = x0 - k * dl * cos(M_PI - abs_a);
+            coy = y0 + k * dl * sin(M_PI - abs_a);
+        }
+        else if (alpha >= 0 && alpha < M_PI / 2)
+        {
+            cox = x0 + k * dl * cos(abs_a);
+            coy = y0 - k * dl * sin(abs_a);
+        }
+        else
+        {
+            cox = x0 - k * dl * cos(M_PI - abs_a);
+            coy = y0 - k * dl * sin(M_PI - abs_a);
+        }
+
+
+        k = k + 1;
+        Point newP = { cox,coy };
+        Path.push_back(newP);
+        plotCircle(cox, coy, dl);//每走一步画一个圆
+        D1 = disPointToPoint(cox, coy, S[endInd], S[endInd+1]);// 如果轨迹点很接近终点圆上的切点，就认为结束直线运动阶段，转入终点圆弧运动阶)段
+    } while (D1 > 0.2);
+}
 //起点的位置和方向，终点的位置和方向，画圆的半径  返回参数S
-void planning(posVector start, posVector end, std::vector<double>& S,double radius = 1.0 )
+void planning(posVector start, posVector end, std::vector<double>& S, double radius = 1.0)
 {
     //找起点的圆
     double sox, soy, eox, eoy;
@@ -137,20 +231,20 @@ void planning(posVector start, posVector end, std::vector<double>& S,double radi
     //找终点的圆
     std::tie(eox, eoy) = findNearCircle(end, start);
 
-     // 计算圆c1: （x-a1)^2+(y-b1)^2=pow(d1,2)和圆C2: (x-a2)^2+(y-b2)^2=pow(d2,2)的共切
-     //线，即直线同时与圆c1和圆c2相切
-     //两个圆的共切线有几种不同情况，分别是：
-     //一个圆在另一个圆内部，这时没有共切线 
-     //两个圆重合，这时有无数条通切线
-     //两个圆有交点（一个或两个交点),这时有两条共切线
-     //两个圆无交点，这时有4条共切线
-     //该程序是起点和终点较远，机器人在长距离进行连续运动时的规划
-     //这时两个圆无交点，4条共切线的一般方程为
-     //l1: l11*x + l21*y + 1 = 0;
-     //l2: l12*x + l22*y + 1 = 0;
-     //l3: l13*x + l23*y + 1 = 0;
-     //l4: l14*x + l24*y + 1 = 0;
-     //下面用解析方法估计4条切线的参数(l11,l12),(l21,l22),(l31,l32),(l41,l42)
+    // 计算圆c1: （x-a1)^2+(y-b1)^2=pow(d1,2)和圆C2: (x-a2)^2+(y-b2)^2=pow(d2,2)的共切
+    //线，即直线同时与圆c1和圆c2相切
+    //两个圆的共切线有几种不同情况，分别是：
+    //一个圆在另一个圆内部，这时没有共切线 
+    //两个圆重合，这时有无数条通切线
+    //两个圆有交点（一个或两个交点),这时有两条共切线
+    //两个圆无交点，这时有4条共切线
+    //该程序是起点和终点较远，机器人在长距离进行连续运动时的规划
+    //这时两个圆无交点，4条共切线的一般方程为
+    //l1: l11*x + l21*y + 1 = 0;
+    //l2: l12*x + l22*y + 1 = 0;
+    //l3: l13*x + l23*y + 1 = 0;
+    //l4: l14*x + l24*y + 1 = 0;
+    //下面用解析方法估计4条切线的参数(l11,l12),(l21,l22),(l31,l32),(l41,l42)
     double a1 = sox;
     double b1 = soy;
     double d1 = 1;
@@ -215,26 +309,26 @@ void planning(posVector start, posVector end, std::vector<double>& S,double radi
         plot_y[0] = four_line[i][0].y;
         plot_y[1] = four_line[i][1].y;
         plt::plot(plot_x, plot_y);
-    }   
+    }
 
     //有4条切线，机器人从起点圆到终点圆 走那一条直线？
     //一条切线与起点处机器人方向矢量之间的夹角a1,与终点处机器人的方向矢量的夹角a2,这两个角度之和最小的切线就是机器人要行走的直线段
     std::vector<double>a(4);
-    
+
     for (int i = 0; i < 4; i++)
     {
         double a1 = angleBetweenPoints(four_line[i][0].x, four_line[i][0].y, start.direction[0], start.direction[1]);//和起点
         double a2 = angleBetweenPoints(four_line[i][1].x, four_line[i][1].y, end.direction[0], end.direction[1]);//和终点
         a[i] = a1 + a2;
     }
-    auto minIndex = min_element(a.begin(), a.end())-a.begin();
+    auto minIndex = min_element(a.begin(), a.end()) - a.begin();
     //cout << minIndex << endl;
-    
-    S.push_back(start.position.x);//起点坐标
+
+    S.push_back(start.position.x);//0 1 起点坐标
     S.push_back(start.position.y);
-    S.push_back(sox);//起点圆心坐标
+    S.push_back(sox);//2 3 起点圆心坐标
     S.push_back(soy);
-    switch (minIndex)//切线参数
+    switch (minIndex)//4 5  切线参数
     {
     case 0:
         S.push_back(l11);
@@ -255,17 +349,79 @@ void planning(posVector start, posVector end, std::vector<double>& S,double radi
     default:
         break;
     }
-    
-    S.push_back(four_line[minIndex][0].x);//起点圆切点坐标
+
+    S.push_back(four_line[minIndex][0].x);//6 7  起点圆切点坐标
     S.push_back(four_line[minIndex][0].y);
-    S.push_back(eox);//终点圆心坐标
+    S.push_back(eox);//8 9  终点圆心坐标
     S.push_back(eoy);
-    S.push_back(four_line[minIndex][1].x);//终点圆切点坐标
+    S.push_back(four_line[minIndex][1].x);//10 11 终点圆切点坐标
     S.push_back(four_line[minIndex][1].y);
-    S.push_back(end.position.x);//终点坐标
+    S.push_back(end.position.x);//12 13  终点坐标
     S.push_back(end.position.y);
 
-    plt::show();
+    //////////////////////////
+    //Robot轨迹点
+    std::vector<Point>Path;
+
+    //Robot从起点到起点圆切点，走圆弧，算走圆弧的步长
+    std::vector<double>v0 = { S[0] - S[2],S[1] - S[3] };//起点圆指向起点的向量
+    std::vector<double>v1 = { S[6] - S[2],S[7] - S[3] };//起点圆指向切点的向量
+    double alpha = angleBetweenPoints(v0[0], v0[1], v1[0], v1[1]);
+    //沿着起点圆弧行走时，以每步0.1m，走的步数da
+    double L = radius * alpha; //弧长
+    double da = alpha / (trunc(L / radStepLen) + 1);
+    //从起点圆的圆心到起点的矢量与x轴正方向的夹角，a，a~(-pi,0),表示逆时针，其他表示顺时针
+    v1[0] = S[0] - S[2];
+    v1[1] = S[1] - S[3];
+    v0 = { 1,0 };
+    double k = -(v0[0] * v1[1] - v0[1] * v1[0]);
+    alpha = sgn(k) * angleBetweenPoints(v0[0], v0[1], v1[0], v1[1]);
+    //起点处机器人方向矢量与切线的夹角，该角度方向表示机器人在起点圆上的运动方向，顺时针+，逆时针-
+    v1 = { S[10] - S[6], S[11] - S[7] };
+    v0[0] = start.direction[0];
+    v0[1] = start.direction[1];
+    k = -(v0[0] * v1[1] - v0[1] * v1[0]);
+
+    Path.push_back(start.position);//轨迹上的第一个点为起点
+    //起点-->起点圆切点
+    plotPathCircleStoreInPath(Path, S, alpha, 2, 6, radius, sgn(k),da);
+    
+    //计算直线运动时的步长，直线运动每步走0.4m 
+    L = disPointToPoint(S[10], S[11], S[6], S[7]);
+    double dl = L / (trunc(L / lineStepLen) + 1);
+    //计算直线的方向
+    v1 = { S[10] - S[6], S[11] - S[7] };
+    v0 = {1 ,0};
+    k = -(v0[0] * v1[1] - v0[1] * v1[0]);
+    alpha =  angleBetweenPoints(v0[0], v0[1], v1[0], v1[1]);
+    alpha = sgn(k) * alpha;
+    //沿直线运动的轨迹
+    //起点圆切点-->终点圆切点  ， 走的切线
+    plotPathLineStoreInPath(Path, S, alpha, 6, 10, dl);
+    
+    //与起点圆弧运动相似，运动方向为直线方向与终点处机器人方向矢量之间的方向
+    v0 = { S[10] - S[8], S[11] - S[9] };//终点圆圆心指向切点的向量
+    v1 = { S[12] - S[8], S[13] - S[9] };//终点圆圆心指向终点的向量
+    alpha = angleBetweenPoints(v0[0], v0[1], v1[0], v1[1]);
+    //沿着起点圆弧行走时，以每步0.1m，走的步数da
+    L = radius * alpha; //弧长
+    da = alpha / (trunc(L / radStepLen) + 1);
+    
+    v1 = { S[10] - S[8],S[11] - S[9] };
+    v0 = { 1,0 };
+    k = -(v0[0] * v1[1] - v0[1] * v1[0]);
+    alpha = sgn(k) * angleBetweenPoints(v0[0], v0[1], v1[0], v1[1]);
+    //算k
+    v0 = { S[10] - S[6], S[11] - S[7] };
+    v1[0] = end.direction[0];
+    v1[1] = end.direction[1];
+    k = -(v0[0] * v1[1] - v0[1] * v1[0]);
+    //终点圆切点-->终点，走的终点圆上的弧线
+    plotPathCircleStoreInPath(Path, S, alpha, 8, 12, radius, sgn(k),da);
+    
+    //plt::show();
+    plt::legend();
+    plt::save("./output.png");
 
 }
 
