@@ -222,8 +222,9 @@ void plotPathLineStoreInPath(std::vector<Point>& Path, std::vector<double>S, dou
         D1 = disPointToPoint(cox, coy, S[endInd], S[endInd+1]);// 如果轨迹点很接近终点圆上的切点，就认为结束直线运动阶段，转入终点圆弧运动阶)段
     } while (D1 > 0.2);
 }
+//曲线运动
 //起点的位置和方向，终点的位置和方向，画圆的半径  返回参数S
-void planning(posVector start, posVector end, std::vector<Point>& Path, double radius = 1.0)
+void CurvilinearMotionPlanning(posVector start, posVector end, std::vector<Point>& Path, double radius = 1.0)
 {
     //找起点的圆
     double sox, soy, eox, eoy;
@@ -310,7 +311,7 @@ void planning(posVector start, posVector end, std::vector<Point>& Path, double r
         plot_y[1] = four_line[i][1].y;
         plt::plot(plot_x, plot_y);
     }
-
+    
     //有4条切线，机器人从起点圆到终点圆 走那一条直线？
     //一条切线与起点处机器人方向矢量之间的夹角a1,与终点处机器人的方向矢量的夹角a2,这两个角度之和最小的切线就是机器人要行走的直线段
     std::vector<double>a(4);
@@ -361,7 +362,7 @@ void planning(posVector start, posVector end, std::vector<Point>& Path, double r
 
     //////////////////////////
     //Robot轨迹点
-    /*std::vector<Point>Path;*/
+    //std::vector<Point>Path;
 
     //Robot从起点到起点圆切点，走圆弧，算走圆弧的步长
     std::vector<double>v0 = { S[0] - S[2],S[1] - S[3] };//起点圆指向起点的向量
@@ -418,18 +419,53 @@ void planning(posVector start, posVector end, std::vector<Point>& Path, double r
     k = -(v0[0] * v1[1] - v0[1] * v1[0]);
     //终点圆切点-->终点，走的终点圆上的弧线
     plotPathCircleStoreInPath(Path, S, alpha, 8, 12, radius, sgn(k),da);
-    
+ 
     //plt::show();
     plt::legend();
     plt::save("./output.png");
 
 }
 
-int main()
-{
-    posVector start = { 10,0,0,-1 };
-    posVector end = { 6.5,1.8,1,0 };
-    std::vector<Point>Path;
-    planning(start, end, Path);
-
-}
+//int main()
+//{
+//    posVector start = { 0,0,1,1 };
+//    posVector end = { 5,5,1,1 };
+//    std::vector<Point>Path;
+//    //同方向，且起点终点的连线和方向相同
+//    std:vector<double>line = { end.position.x - start.position.x,end.position.y - start.position.y };
+//    double ang = angleBetweenPoints(start.direction[0], start.direction[1], line[0], line[1]);
+//    if (start.direction[0] == end.direction[0] && start.direction[1] == end.direction[1] && ang <= 1e-3)
+//    {
+//        if (start.position.x == end.position.x && start.position.y==end.position.y)//或者改成相对距离小于一个值（机器人迈一步的最小值，不然会脚踩脚）
+//        {
+//            cout << "起点和终点在同一位置" << endl;
+//        }
+//        else
+//        {
+//            //计算直线运动时的步长，直线运动每步走0.4m 
+//            double L = disPointToPoint(start.position.x, start.position.y, end.position.x, end.position.y);
+//            double dl = L / (trunc(L / lineStepLen) + 1);
+//            //计算直线的方向
+//            std::vector<double> v1 = { end.position.x - start.position.x, end.position.y - start.position.y };
+//            std::vector<double> v0 = { 1 ,0 };
+//            double k = -(v0[0] * v1[1] - v0[1] * v1[0]);
+//            double alpha = angleBetweenPoints(v0[0], v0[1], v1[0], v1[1]);
+//            alpha = sgn(k) * alpha;
+//            //沿直线运动的轨迹
+//            //起点圆切点-->终点圆切点  ， 走的切线
+//            std::vector<double>S = { start.position.x ,start.position.y, end.position.x, end.position.y };
+//            plotPathLineStoreInPath(Path, S, alpha, 0, 2, dl);
+//            plt::legend();
+//            plt::save("./output.png");
+//        }
+//    }
+//    else if (start.direction[0] == end.direction[0] && start.direction[1] == end.direction[1])
+//    {
+//        //短距离平移运动 
+//    }
+//    else
+//    {
+//        CurvilinearMotionPlanning(start, end, Path);
+//    }
+//
+//}

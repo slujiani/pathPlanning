@@ -1,4 +1,8 @@
-﻿  planning.cpp
+﻿  planning2.cpp
+D:\Docs\task\replay_3experiments\3-5month\c_plus_plus_code\planning\planning\planning2.cpp(194,24): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+D:\Docs\task\replay_3experiments\3-5month\c_plus_plus_code\planning\planning\planning2.cpp(204,22): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
+D:\Docs\task\replay_3experiments\3-5month\c_plus_plus_code\planning\planning\planning2.cpp(139,12): warning C4101: “y”: 未引用的局部变量
+D:\Docs\task\replay_3experiments\3-5month\c_plus_plus_code\planning\planning\planning2.cpp(139,9): warning C4101: “x”: 未引用的局部变量
 D:\Software\vcpkg\vcpkg\installed\x64-windows\include\matplotlibcpp.h(1482,48): warning C4244: “=”: 从“size_t”转换到“_Ty”，可能丢失数据
           with
           [
