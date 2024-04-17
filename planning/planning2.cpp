@@ -6,7 +6,7 @@
 #include<matplotlibcpp.h>
 
 #define maxa 24*M_PI/180
-
+#define robot_feet_to_center 0.3
 using namespace std;
 namespace plt = matplotlibcpp;
 
@@ -127,8 +127,20 @@ Position newRotationAngle(double da,Position v0,Position v1)
 	}
 
 }
+void dataToFile(std::vector<posDirect>Path,string fname)
+{
+	std::ofstream outFile(fname, ios::out);
+	int peSize = Path.size();
+	for (int i = 0; i < peSize; i++)
+	{
+		outFile << to_string(Path[i].pos.x) << ','
+			<< to_string(Path[i].pos.y) << ','
+			<< to_string(Path[i].direct.x) << ','
+			<< to_string(Path[i].direct.y) << endl;
+	}
+}
 //质心轨迹规划
-void planning(posDirect start, posDirect end, std::vector<posDirect>& Path,double r=0.1)
+void planning(posDirect start, posDirect end, std::vector<posDirect>& Path, double r = 0.1)
 {
 	double msa = sqrt(dotVector(start.direct, start.direct));
 	start.direct = { start.direct.x / msa,start.direct.y / msa };
@@ -143,13 +155,13 @@ void planning(posDirect start, posDirect end, std::vector<posDirect>& Path,doubl
 	// 将ea旋转180度->v1
 	Position v1 = { -end.direct.x,-end.direct.y };//ea的反向矢量
 	Position nea = v1;
-	
+
 	double D = disBetweenPoints(start.pos, end.pos);// D：当前起点和终点之间的距离
-	
+
 	vector<posDirect>Pe = { {end.pos,nea} };//Pe：从终点反向出发的路径点坐标和朝向
 	Position vet = nea;
 	Position epc = end.pos;
-	
+
 	vector<posDirect>Ps = { start };//Ps：从起点沿着朝向出发的路径点坐标和朝向
 	Position vst = start.direct;
 	Position spc = start.pos;
@@ -164,12 +176,12 @@ void planning(posDirect start, posDirect end, std::vector<posDirect>& Path,doubl
 		da = cal_da(v0, v1);
 		//尝试一下当前的方向时顺时针运动还是逆时针运动。向哪个转向运动后的指向与当前终点到起点的矢量之间的夹角减小就用哪个方向旋转
 		//顺时针旋转da角度
-		
+
 		vet = newRotationAngle(da, v0, v1);
 		//计算转向后朝向矢量与x轴正方向的夹角
 		v0 = { 1,0 };
 		v1 = vet;
-		a=sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
+		a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
 		//在转向方向上从当前点前进r距离后的位置(x,y)
 		//把这个点位置记录下来，记录到终点反向序列上
 		epc = calNextPosition(Pe[ke].pos.x, Pe[ke].pos.y, a, r);
@@ -187,36 +199,59 @@ void planning(posDirect start, posDirect end, std::vector<posDirect>& Path,doubl
 		a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
 		spc = calNextPosition(Ps[ks].pos.x, Ps[ks].pos.y, a, r);
 		ks++;
-		Ps.push_back({ spc,vst });		
+		Ps.push_back({ spc,vst });
 		D = sqrt(dotVector(vectAtoB(spc, epc), vectAtoB(spc, epc)));
 	}
 	//整理整条路径
 	Path = Ps;
 	int peSize = Pe.size();
 	posDirect nextNode;
-	for (int i = peSize-1; i >=0; i--)
+	for (int i = peSize - 1; i >= 0; i--)
 	{
 		nextNode = { Pe[i].pos.x,Pe[i].pos.y,-Pe[i].direct.x,-Pe[i].direct.y };
 		Path.push_back(nextNode);
 	}
 	//将数据写入文件  ---为了matlab画图
-	string fname = "path1.csv";
-	std::ofstream outFile(fname, ios::out);
-	peSize = Path.size();
-	for (int i = 0; i < peSize; i++)
-	{
-		outFile << to_string(Path[i].pos.x) << ','
-			<< to_string(Path[i].pos.y) << ','
-			<< to_string(Path[i].direct.x) << ','
-			<< to_string(Path[i].direct.y) << endl;
-	}
+	string fname = "path.csv";
+	dataToFile(Path,fname);
 }
-//足部轨迹规划
-
+Position oneFootNextPos(Position verVect,Position centerPos, double  r)
+{
+	Position v0 = { 1,0 };
+	Position v1 = verVect;
+	double a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
+	//在转向方向上从当前点前进r距离后的位置(x,y)
+	//把这个点位置记录下来，记录到终点反向序列上
+	Position nextPos = calNextPosition(centerPos.x, centerPos.y, a, r);
+	return nextPos;
+}
+//足部轨迹规划   disCentorToFoot是左脚/右脚关于质心的距离
+void feetPlanning(std::vector<posDirect>Path, double disCentorToFeet, std::vector<posDirect>& leftPath, std::vector<posDirect>& rightPath)
+{
+	int pathSize = Path.size();
+	for (int i = 0; i < pathSize; i++)
+	{
+		Position VerticalDireRight = { Path[i].direct.y,-Path[i].direct.x };//和Path[i]方向垂直的两个方向
+		Position VerticalDireleft = { -Path[i].direct.y,Path[i].direct.x };
+		posDirect newLeft, newRight;
+		newLeft.pos = oneFootNextPos(VerticalDireleft, Path[i].pos, disCentorToFeet);
+		newLeft.direct = Path[i].direct;
+		leftPath.push_back(newLeft);
+		newRight.pos = oneFootNextPos(VerticalDireRight, Path[i].pos, disCentorToFeet);
+		newRight.direct = Path[i].direct;
+		rightPath.push_back(newRight);
+	}
+	//将数据写入文件  ---为了matlab画图
+	string fnameLeft = "leftPath.csv";
+	dataToFile(leftPath, fnameLeft);
+	string fnameRight = "rightPath.csv";
+	dataToFile(rightPath, fnameRight);
+}
 int main()
 {
 	posDirect sp_sa = { 1,0,1,0 };
 	posDirect ep_ea = { 5,5,1,0 };
-	std::vector <posDirect>Path;
+	std::vector <posDirect>Path,leftPath,rightPath;
 	planning(sp_sa, ep_ea, Path);
+	feetPlanning(Path, robot_feet_to_center, leftPath, rightPath);
 }
