@@ -8,7 +8,7 @@
 
 #define radStepLen 0.1 //圆弧上Robot走的步长
 #define lineStepLen 0.4 //直线Robot走的步长
-//#define sgn(x) (x>0)-(x<0)
+
 
 using namespace std;
 namespace plt = matplotlibcpp;
@@ -23,14 +23,6 @@ struct posVector
     ::Point position;//坐标
     double direction[2];//朝向
 };
-
-// typedef struct pointCp
-// {
-//     double sp[2]; //起点坐标
-//     double sa[2]; //起点位置时机器人朝向的方向矢量
-//     double ep[2]; //终点坐标
-//     double ea[2]; //终点位置时机器人朝向的方向矢量
-// }POINTCP;
 
 double sgn(double x)
 {

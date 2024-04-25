@@ -5,10 +5,16 @@
 #include<vector>
 #include<matplotlibcpp.h>
 
-#define maxa 24*M_PI/180
-#define robot_feet_to_center 0.3
+
+#define maxa 10*M_PI/180
+#define robot_feet_to_centerL 0.1
+#define robot_feet_to_centerR 0.1
+#define interpolation_multiple 10.0 //插值倍数
+#define deflectionAngleRate 0.25  // 偏转角度的比例系数，在（0,1）之间取值，一般取0.25
+
 using namespace std;
 namespace plt = matplotlibcpp;
+
 
 struct Position {
 	double x;
@@ -17,6 +23,7 @@ struct Position {
 struct posDirect {
 	Position pos;
 	Position direct;
+	int tag; //1表示直线上的点，-1表示曲线上的点，0表示终点
 };
 //返回两个向量的内积
 double dotVector(Position a, Position b)
@@ -29,6 +36,26 @@ int sgn(double k)
 	if (k > 0)
 	{
 		return 1;
+	}
+	//else if (k == 0)
+	//{
+	//	return 0;
+	//}
+	else
+	{
+		return -1;
+	}
+}
+//返回符号
+int sgnTag(double k)
+{
+	if (k > 0)
+	{
+		return 1;
+	}
+	else if (k == 0)
+	{
+		return 0;
 	}
 	else
 	{
@@ -60,6 +87,23 @@ Position vectAtoB(Position a, Position b)
 	Position res = { b.x - a.x,b.y - a.y };
 	return res;
 }
+Position vectAmulC(Position a, double alpha)
+{
+	Position res = { alpha * a.x,alpha * a.y };
+	return res;
+}
+Position vectAaddB(Position a, Position b)
+{
+	Position res = { a.x + b.x,a.y + b.y };
+	return res;
+}
+Position normalizeVect(Position a)
+{
+	double N = sqrt(a.x * a.x + a.y * a.y);
+	Position res = { (1 / N) * a.x,(1 / N) * a.y };
+	return res;
+}
+
 Position calNextPosition(double x0, double y0, double a, double r)
 {
 	double x, y;
@@ -93,17 +137,17 @@ double cal_da(Position v0, Position v1)
 	double a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
 	double abs_a = abs(a);
 	double da;
-	if (0.25 * abs_a > maxa)
+	if (deflectionAngleRate * abs_a > maxa)
 	{
 		da = maxa;
 	}
 	else
 	{
-		da = 0.25 * abs_a;
+		da = deflectionAngleRate * abs_a;
 	}
 	return da;
 }
-Position newRotationAngle(double da,Position v0,Position v1)
+Position newRotationAngle(double da,Position v0,Position& v1)
 {
 	//顺时针旋转da角度
 	Position tmpA = { cos(da),-sin(da) };
@@ -133,18 +177,44 @@ void dataToFile(std::vector<posDirect>Path,string fname)
 	int peSize = Path.size();
 	for (int i = 0; i < peSize; i++)
 	{
-		outFile << to_string(Path[i].pos.x) << ','
-			<< to_string(Path[i].pos.y) << ','
-			<< to_string(Path[i].direct.x) << ','
-			<< to_string(Path[i].direct.y) << endl;
+		//outFile << to_string(round(Path[i].pos.x*10000)/10000) << ','
+		//	<< to_string(round(Path[i].pos.y * 10000) / 10000) << ','
+		//	<< to_string(round(Path[i].direct.x * 10000) / 10000) << ','
+		//	<< to_string(round(Path[i].direct.y * 10000) / 10000) << ','
+		//	<< to_string(Path[i].tag) << endl;
+		outFile << to_string(Path[i].pos.x ) << ','
+			<< to_string(Path[i].pos.y ) << ','
+			<< to_string(Path[i].direct.x ) << ','
+			<< to_string(Path[i].direct.y ) << ','
+			<< to_string(Path[i].tag) << endl;
 	}
+}
+//区分轨迹上的点是曲线还是直线，曲线则tag为-1，直线tag为1，终点为0
+//scTH：判断直线或曲线的依据，当前点朝向和下一点朝向变化的阈值，单位：度
+void tagCurOrLine(std::vector<posDirect>& Path, double scTH)
+{
+	int pathSize = Path.size();
+	scTH = scTH * M_PI / 180;
+	for (int i = 0; i < pathSize - 1; i++)
+	{
+		double a = angleBetweenVector(Path[i].direct, Path[i + 1].direct);
+		if (a < scTH)
+		{
+			Path[i].tag = 1;	// 直线
+		}
+		else
+		{
+			Path[i].tag = -1;	// 曲线
+		}
+	}
+	Path[pathSize - 1].tag = 0;	//终点
 }
 //质心轨迹规划
 void planning(posDirect start, posDirect end, std::vector<posDirect>& Path, double r = 0.1)
 {
-	double msa = sqrt(dotVector(start.direct, start.direct));
+	double msa = sqrt(dotVector(start.direct, start.direct));	// 起点朝向矢量归一化
 	start.direct = { start.direct.x / msa,start.direct.y / msa };
-	double mea = sqrt(dotVector(end.direct, end.direct));
+	double mea = sqrt(dotVector(end.direct, end.direct));	//终点朝向矢量归一化
 	end.direct = { end.direct.x / mea,end.direct.y / mea };
 	//计算ea与x轴正向夹角
 	Position v0 = { 1,0 };
@@ -206,52 +276,112 @@ void planning(posDirect start, posDirect end, std::vector<posDirect>& Path, doub
 	Path = Ps;
 	int peSize = Pe.size();
 	posDirect nextNode;
-	for (int i = peSize - 1; i >= 0; i--)
+	for (int i = peSize - 2; i >= 0; i--)
 	{
-		nextNode = { Pe[i].pos.x,Pe[i].pos.y,-Pe[i].direct.x,-Pe[i].direct.y };
+		nextNode.pos = Pe[i].pos;
+		nextNode.direct = { -Pe[i].direct.x,-Pe[i].direct.y };
+		nextNode.direct = normalizeVect(nextNode.direct);
+		nextNode.tag = Pe[i].tag;
 		Path.push_back(nextNode);
 	}
 	//将数据写入文件  ---为了matlab画图
-	string fname = "path.csv";
+	string fname = "rawPath.csv";
 	dataToFile(Path,fname);
+	//区分点是曲线上的还是直线上的
+	double scTH = 1;
+	tagCurOrLine(Path, scTH);
+	string fname2 = "Path.csv";
+	dataToFile(Path, fname2);
 }
 Position oneFootNextPos(Position verVect,Position centerPos, double  r)
 {
 	Position v0 = { 1,0 };
 	Position v1 = verVect;
 	double a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
-	//在转向方向上从当前点前进r距离后的位置(x,y)
-	//把这个点位置记录下来，记录到终点反向序列上
 	Position nextPos = calNextPosition(centerPos.x, centerPos.y, a, r);
 	return nextPos;
 }
-//足部轨迹规划   disCentorToFoot是左脚/右脚关于质心的距离
-void feetPlanning(std::vector<posDirect>Path, double disCentorToFeet, std::vector<posDirect>& leftPath, std::vector<posDirect>& rightPath)
+//产生下一个插值点
+posDirect genInterpolationNew(posDirect pd1,posDirect pd2,int j)
+{
+	double k = (j+1) / interpolation_multiple;
+	posDirect res;
+	Position tmpPos = vectAmulC(vectAtoB(pd1.pos, pd2.pos), k);
+	res.pos = vectAaddB(pd1.pos, tmpPos);
+	Position tmpDirect = vectAmulC(vectAtoB(pd1.direct, pd2.direct), k);
+	res.direct = normalizeVect(vectAaddB(pd1.direct, tmpDirect));
+	res.tag = sgnTag( pd1.tag + k * (pd2.tag - pd1.tag));
+	return res;
+}
+void feetPlanning(std::vector<posDirect>Path, std::vector<posDirect>& leftPath, std::vector<posDirect>& rightPath)
 {
 	int pathSize = Path.size();
+	std::vector <posDirect> LPath, RPath;
 	for (int i = 0; i < pathSize; i++)
 	{
 		Position VerticalDireRight = { Path[i].direct.y,-Path[i].direct.x };//和Path[i]方向垂直的两个方向
 		Position VerticalDireleft = { -Path[i].direct.y,Path[i].direct.x };
 		posDirect newLeft, newRight;
-		newLeft.pos = oneFootNextPos(VerticalDireleft, Path[i].pos, disCentorToFeet);
+		newLeft.pos = oneFootNextPos(VerticalDireleft, Path[i].pos, robot_feet_to_centerL);
 		newLeft.direct = Path[i].direct;
-		leftPath.push_back(newLeft);
-		newRight.pos = oneFootNextPos(VerticalDireRight, Path[i].pos, disCentorToFeet);
+		newLeft.tag = Path[i].tag;
+		LPath.push_back(newLeft);
+		newRight.pos = oneFootNextPos(VerticalDireRight, Path[i].pos, robot_feet_to_centerR);
 		newRight.direct = Path[i].direct;
-		rightPath.push_back(newRight);
-	}
+		newRight.tag = Path[i].tag;
+		RPath.push_back(newRight);
+	}	
 	//将数据写入文件  ---为了matlab画图
-	string fnameLeft = "leftPath.csv";
-	dataToFile(leftPath, fnameLeft);
-	string fnameRight = "rightPath.csv";
-	dataToFile(rightPath, fnameRight);
+	string fnameLeft = "leftRawPath.csv";
+	dataToFile(LPath, fnameLeft);
+	string fnameRight = "rightRawPath.csv";
+	dataToFile(RPath, fnameRight);
+
+	//分别对双足规划的位置和朝向进行插值
+	int Ls = 0;
+	int Rs = 0;
+	for (int i = 0; i < pathSize - 1; i++)
+	{
+
+		Ls++;
+		leftPath.push_back( LPath[i]);
+		rightPath.push_back(RPath[i]);
+		for (int j = 0; j < interpolation_multiple - 1; j++)
+		{
+			//左
+			posDirect newOne = genInterpolationNew(LPath[i], LPath[i + 1], j);
+			leftPath.push_back(newOne);
+			//右
+			newOne = genInterpolationNew(RPath[i], RPath[i + 1], j);
+			rightPath.push_back(newOne);
+		}
+	}
+	//修改中间数据第5列为0的点的属性。
+	pathSize = leftPath.size();
+	for (int i = 0; i < pathSize-1; i++)
+	{
+		if (leftPath[i].tag == 0)
+		{
+			leftPath[i].tag = leftPath[i + 1].tag;
+		}
+		if (rightPath[i].tag == 0)
+		{
+			rightPath[i].tag = rightPath[i + 1].tag;
+		}
+	}
+	//
+	string fnameLeft2 = "leftPath.csv";
+	dataToFile(leftPath, fnameLeft2);
+	string fnameRight2 = "rightPath.csv";
+	dataToFile(rightPath, fnameRight2);
 }
+
 int main()
 {
-	posDirect sp_sa = { 1,0,1,0 };
-	posDirect ep_ea = { 5,5,1,0 };
+	posDirect sp_sa = { 0,0,1,0 ,0};
+	posDirect ep_ea = { 0,6,0,1 ,0};
 	std::vector <posDirect>Path,leftPath,rightPath;
-	planning(sp_sa, ep_ea, Path);
-	feetPlanning(Path, robot_feet_to_center, leftPath, rightPath);
+	planning(sp_sa, ep_ea, Path);//规划质心轨迹
+	feetPlanning(Path, leftPath, rightPath);//规划双足轨迹线
+	return 0;
 }

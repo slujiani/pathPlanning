@@ -71,7 +71,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\Software\openCV\opencv\build\include\opencv2;D:\Software\openCV\opencv\build\include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Software\openCV\opencv\build\include\opencv2;D:\Software\openCV\opencv\build\include;D:\Docs\task\replay_3experiments\3-5month\c_plus_plus_code\planning\planning;$(IncludePath)</IncludePath>
     <LibraryPath>D:\Software\openCV\opencv\build\x64\vc16\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
