@@ -11,6 +11,9 @@
 #define robot_feet_to_centerR 0.1
 #define interpolation_multiple 10.0 //插值倍数
 #define deflectionAngleRate 0.25  // 偏转角度的比例系数，在（0,1）之间取值，一般取0.25
+#define max_line_transverse 0.4//机器人走直线一步最大走0.4m
+#define max_line_forward 0.4
+#define max_line_backward 0.2//机器人直线后退步长
 
 using namespace std;
 namespace plt = matplotlibcpp;
@@ -73,8 +76,9 @@ double angleBetweenVector(Position a, Position b)
 {
 	double dot = a.x * b.x + a.y * b.y;
 	double len1 = sqrt(a.x * a.x + a.y * a.y);
-	double len2 = sqrt(b.x * b.x + b.y * b.y);
-	return acos(dot / (len1 * len2));
+	double len2 = sqrt(b.x * b.x + b.y * b.y); 
+	double  tmp = dot / (len1 * len2);
+	return acos(fmin(fmax(tmp,-1.0),1.0));
 }
 //返回两点间的距离
 double disBetweenPoints(Position a, Position b)
@@ -237,61 +241,90 @@ void planning(posDirect start, posDirect end, std::vector<posDirect>& Path, doub
 	Position spc = start.pos;
 
 	double da;
-	while (D >= r)
+	
+	if (D < 1.0 and angleBetweenVector(start.direct, end.direct) < 0.1)
 	{
-		//在当前的起点和终点之间的距离很小时结束迭代
-		//计算终点反方向矢量与终点到起点的矢量之间的夹角
-		v0 = vectAtoB(epc, spc);
-		v1 = vet;
-		da = cal_da(v0, v1);
-		//尝试一下当前的方向时顺时针运动还是逆时针运动。向哪个转向运动后的指向与当前终点到起点的矢量之间的夹角减小就用哪个方向旋转
-		//顺时针旋转da角度
+		//走直线
+		Position startToEnd = normalizeVect(vectAtoB(start.pos, end.pos));
+		double tmp = angleBetweenVector(startToEnd, start.direct);
+		start.tag = 1;
+		Path.push_back(start);
+		posDirect curNode = start;
+		//if (tmp < 0.1 or abs(tmp - M_PI / 2.0) < 0.1)
+		//{
+		while (D >= 0.1)
+		{
+			da = min(D, max_line_forward);
+			//startToEnd = normalizeVect(vectAtoB(end.pos,curNode.pos));
+			posDirect newNode = { {curNode.pos.x + da * startToEnd.x,curNode.pos.y + da * startToEnd.y},curNode.direct,1 };
+			Path.push_back(newNode);
+			curNode = newNode;
+			D = disBetweenPoints(curNode.pos, end.pos);
+			//cout << "======================" << endl;
+			//cout << curNode.pos.x << endl;
+			//cout << curNode.pos.y << endl;
+		}
 
-		vet = newRotationAngle(da, v0, v1);
-		//计算转向后朝向矢量与x轴正方向的夹角
-		v0 = { 1,0 };
-		v1 = vet;
-		a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
-		//在转向方向上从当前点前进r距离后的位置(x,y)
-		//把这个点位置记录下来，记录到终点反向序列上
-		epc = calNextPosition(Pe[ke].pos.x, Pe[ke].pos.y, a, r);
-		ke++;
-		Pe.push_back({ epc,vet });
 
-		///////////////////////////////////////////////////////
-		//计算起点方向矢量与起点到终点的矢量之间的夹角，起点朝向不进行反向处理
-		v0 = vectAtoB(spc, epc);
-		v1 = vst;
-		da = cal_da(v0, v1);
-		vst = newRotationAngle(da, v0, v1);
-		//计算转向后朝向矢量与x轴正方向的夹角
-		v0 = { 1,0 };
-		a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
-		spc = calNextPosition(Ps[ks].pos.x, Ps[ks].pos.y, a, r);
-		ks++;
-		Ps.push_back({ spc,vst });
-		D = sqrt(dotVector(vectAtoB(spc, epc), vectAtoB(spc, epc)));
 	}
-	//整理整条路径
-	Path = Ps;
-	int peSize = Pe.size();
-	posDirect nextNode;
-	for (int i = peSize - 2; i >= 0; i--)
-	{
-		nextNode.pos = Pe[i].pos;
-		nextNode.direct = { -Pe[i].direct.x,-Pe[i].direct.y };
-		nextNode.direct = normalizeVect(nextNode.direct);
-		nextNode.tag = Pe[i].tag;
-		Path.push_back(nextNode);
+	else{
+		while (D >= r)
+		{
+			//在当前的起点和终点之间的距离很小时结束迭代
+			//计算终点反方向矢量与终点到起点的矢量之间的夹角
+			v0 = vectAtoB(epc, spc);
+			v1 = vet;
+			da = cal_da(v0, v1);
+			//尝试一下当前的方向时顺时针运动还是逆时针运动。向哪个转向运动后的指向与当前终点到起点的矢量之间的夹角减小就用哪个方向旋转
+			//顺时针旋转da角度
+
+			vet = newRotationAngle(da, v0, v1);
+			//计算转向后朝向矢量与x轴正方向的夹角
+			v0 = { 1,0 };
+			v1 = vet;
+			a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
+			//在转向方向上从当前点前进r距离后的位置(x,y)
+			//把这个点位置记录下来，记录到终点反向序列上
+			epc = calNextPosition(Pe[ke].pos.x, Pe[ke].pos.y, a, r);
+			ke++;
+			Pe.push_back({ epc,vet });
+
+			///////////////////////////////////////////////////////
+			//计算起点方向矢量与起点到终点的矢量之间的夹角，起点朝向不进行反向处理
+			v0 = vectAtoB(spc, epc);
+			v1 = vst;
+			da = cal_da(v0, v1);
+			vst = newRotationAngle(da, v0, v1);
+			//计算转向后朝向矢量与x轴正方向的夹角
+			v0 = { 1,0 };
+			a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
+			spc = calNextPosition(Ps[ks].pos.x, Ps[ks].pos.y, a, r);
+			ks++;
+			Ps.push_back({ spc,vst });
+
+			D = sqrt(dotVector(vectAtoB(spc, epc), vectAtoB(spc, epc)));
+		}
+		//整理整条路径
+		//Path = Ps;
+		Path.insert(Path.end(), Ps.begin(), Ps.end());
+		int peSize = Pe.size();
+		posDirect nextNode;
+		for (int i = peSize - 2; i >= 0; i--)
+		{
+			nextNode.pos = Pe[i].pos;
+			nextNode.direct = { -Pe[i].direct.x,-Pe[i].direct.y };
+			nextNode.direct = normalizeVect(nextNode.direct);
+			nextNode.tag = Pe[i].tag;
+			Path.push_back(nextNode);
+		}
 	}
 	//将数据写入文件  ---为了matlab画图
-	string fname = "rawPath.csv";
-	dataToFile(Path,fname);
+	//string fname = "rawPath.csv";
+	//dataToFile(Path,fname);
 	//区分点是曲线上的还是直线上的
 	double scTH = 1;
 	tagCurOrLine(Path, scTH);
-	string fname2 = "Path.csv";
-	dataToFile(Path, fname2);
+
 }
 Position oneFootNextPos(Position verVect,Position centerPos, double  r)
 {
@@ -332,9 +365,9 @@ void feetPlanning(std::vector<posDirect>Path, std::vector<posDirect>& leftPath, 
 		RPath.push_back(newRight);
 	}	
 	//将数据写入文件  ---为了matlab画图
-	string fnameLeft = "leftRawPath.csv";
+	string fnameLeft = "file/leftRawPath.csv";
 	dataToFile(LPath, fnameLeft);
-	string fnameRight = "rightRawPath.csv";
+	string fnameRight = "file/rightRawPath.csv";
 	dataToFile(RPath, fnameRight);
 
 	//分别对双足规划的位置和朝向进行插值
@@ -370,18 +403,71 @@ void feetPlanning(std::vector<posDirect>Path, std::vector<posDirect>& leftPath, 
 		}
 	}
 	//
-	string fnameLeft2 = "leftPath.csv";
-	dataToFile(leftPath, fnameLeft2);
-	string fnameRight2 = "rightPath.csv";
-	dataToFile(rightPath, fnameRight2);
+
 }
 
 int main()
 {
-	posDirect sp_sa = { 0,0,1,0 ,0};
-	posDirect ep_ea = { 0,6,0,1 ,0};
-	std::vector <posDirect>Path,leftPath,rightPath;
-	planning(sp_sa, ep_ea, Path);//规划质心轨迹
+	//vector<posDirect>sp_sa_lst = { { 0,0,1,0 ,0} ,{ 0,6,0,1 ,0 } ,{ 10,6,-1,0 ,0 } };
+	//vector<posDirect>ep_ea_lst = { { 0,6,0,1 ,0} ,{ 10,6,-1,0 ,0} ,{ 0,6,-1,0 ,0} };
+	vector<posDirect>sp_sa_lst = { { 2.19852 ,3.31677 ,0.590433, 0.807087 ,0} };
+	vector<posDirect>ep_ea_lst = { { 3.1, 2.9, 0.590433, 0.807087,0} };
+
+	std::vector <posDirect>Path, leftPath, rightPath;
+	//posDirect sp_sa = { 10,6,-1,0 ,0 };
+	//posDirect ep_ea = { 0,6,0,1 ,0 };
+	int sSize = sp_sa_lst.size();
+	int eSize = ep_ea_lst.size();
+	if (eSize != sSize)
+	{
+		cout << "起点列表和终点列表不匹配，请检查" << endl;
+		return 0;
+	}
+	for (int i = 0; i < sSize; i++)
+	{
+		//如果起始和终点两个点距离太近且朝向相同，画不了圆，直接插点走直线
+		double D = sqrt(dotVector(vectAtoB(sp_sa_lst[i].pos, ep_ea_lst[i].pos), vectAtoB(sp_sa_lst[i].pos, ep_ea_lst[i].pos)));
+		double tmp = angleBetweenVector(sp_sa_lst[i].direct, ep_ea_lst[i].direct);
+		if (D < 1.0 and angleBetweenVector(sp_sa_lst[i].direct, ep_ea_lst[i].direct) < 0.1)
+		{
+			double theta = angleBetweenVector(ep_ea_lst[i].direct, { 1,0 });
+			posDirect insertNode;
+			if (theta == M_PI / 2.0)
+			{
+				insertNode.pos.x = ep_ea_lst[i].pos.x;
+				insertNode.pos.y = sp_sa_lst[i].pos.y;
+				insertNode.direct = ep_ea_lst[i].direct;
+				insertNode.tag = 1;
+			}
+			else
+			{
+				double x0 = ep_ea_lst[i].pos.x;
+				double y0 = ep_ea_lst[i].pos.y;
+				double x1 = sp_sa_lst[i].pos.x;
+				double y1 = sp_sa_lst[i].pos.y;
+				double tan_theta = tan(theta);
+				double fenMu = 1 + pow(tan(theta), 2);
+				insertNode.pos.x = (x1 + y1 * tan_theta - y0 * tan_theta + x0 * tan_theta * tan_theta) / fenMu;
+				insertNode.pos.y = (y0 - x0 * tan_theta + x1 * tan_theta + y1 * tan_theta * tan_theta) / fenMu;
+				insertNode.direct = ep_ea_lst[i].direct;
+				insertNode.tag = 1;
+			}
+			sp_sa_lst.insert(sp_sa_lst.begin() + i + 1, insertNode);
+			ep_ea_lst.insert(ep_ea_lst.begin() + i, insertNode);
+		}
+	}
+	sSize = sp_sa_lst.size();
+	for (int i = 0; i < sSize; i++)
+	{
+		
+		planning(sp_sa_lst[i], ep_ea_lst[i], Path);//规划质心轨迹
+	}
+	string fname2 = "file/Path.csv";
+	dataToFile(Path, fname2);
 	feetPlanning(Path, leftPath, rightPath);//规划双足轨迹线
+	string fnameLeft2 = "file/leftPathAll.csv";
+	dataToFile(leftPath, fnameLeft2);
+	string fnameRight2 = "file/rightPathAll.csv";
+	dataToFile(rightPath, fnameRight2);
 	return 0;
 }
