@@ -75,50 +75,37 @@ bool isCollisionFree(const Mat& elevationMap, int x, int y,Point direction) {
     int dirY = direction.y;
 
     for (int i = -halfWidth; i <= halfWidth; ++i) {
-        for (int j = -halfLength; j <= halfLength; ++j) {
-            int newX = x + i * dirX - j * dirY;
-            int newY = y + j * dirX + i * dirY;
+        int newX, newY;
 
-            if (newX < 0 || newX >= elevationMap.cols || newY < 0 || newY >= elevationMap.rows) {
-                return false; // Out of bounds
-            }
-
-            uchar newHeight = elevationMap.at<uchar>(newY, newX);
-            if (newHeight == 255) {
-                return false; // 255 indicates no data
-            }
-            float heightDiff = abs(curHeight - newHeight) * perPixelHeight;
-            if (heightDiff > maxStepHeight) {
-                return false;
-            }
-            //float hDiff = (curHeight - newHeight) * perPixelHeight;
-            //if (hDiff > 0.1) {
-            //    return false; // Obstacle detected
-            //}
+        if (dirX == 0) { // Moving vertically
+            newX = x + i;
+            newY = y + dirY * halfLength;
+        } 
+        else { // Moving horizontally or diagonally
+            newX = x + dirX * halfLength;
+            newY = y + i;
         }
+
+        if (newX < 0 || newX >= elevationMap.cols || newY < 0 || newY >= elevationMap.rows) {
+            return false; // Out of bounds
+        }
+
+        uchar newHeight = elevationMap.at<uchar>(newY, newX);
+        if (newHeight == 255) {
+            return false; // 255 indicates no data
+        }
+        //float heightDiff = abs(curHeight - newHeight) * perPixelHeight;
+        //if (heightDiff > maxStepHeight) {
+        //    return false;
+        //}
+        //float hDiff = (curHeight - newHeight) * perPixelHeight;
+        //if (hDiff > 0.1) {
+        //    return false; // Obstacle detected
+        //}
+        
     }
     return true;
 }
-////判断点是否在台阶内
-//bool isInStairsRegion(int x, int y) {
-//    // 定义台阶区域的四个顶点
-//    Point p1(1204, 1149);
-//    Point p2(1321, 1069);
-//    Point p3(1231, 959);
-//    Point p4(1120, 1027);
-//
-//    vector<Point> region = { p1, p2, p3, p4 };
-//
-//    // 使用点在多边形内的方法判断
-//    int i, j, nvert = region.size();
-//    bool c = false;
-//    for (i = 0, j = nvert - 1; i < nvert; j = i++) {
-//        if (((region[i].y >= y) != (region[j].y >= y)) &&
-//            (x <= (region[j].x - region[i].x) * (y - region[i].y) / (region[j].y - region[i].y) + region[i].x))
-//            c = !c;
-//    }
-//    return c;
-//}
 
 vector<pixDir> aStar(const Mat& elevationMap, Point start, Point goal, unordered_set<int>& visitedPoints) {
     auto start_time = std::chrono::high_resolution_clock::now();  // Start timing
@@ -168,16 +155,15 @@ vector<pixDir> aStar(const Mat& elevationMap, Point start, Point goal, unordered
             visitedPoints.insert(hashPoint(newX, newY));
             if (newX >= 0 && newX < elevationMap.cols && newY >= 0 && newY < elevationMap.rows) {
                 float heightDiff = abs(elevationMap.at<uchar>(newY, newX) - elevationMap.at<uchar>(current.y, current.x)) * perPixelHeight;
-                if (heightDiff > maxStepHeight || !isCollisionFree(elevationMap, newX, newY, dir)) {
+                if (!isCollisionFree(elevationMap, newX, newY, dir)) {
                     continue; // 高度差超过最大抬脚高度，跳过
                 }
                 if (elevationMap.at<uchar>(newY, newX) == 255) {
                     continue;
                 }
-                float newCost = costSoFar[hashPoint(current.x, current.y)] + heightDiff * 2; // Reduce the impact of height difference
+                float newCost = costSoFar[hashPoint(current.x, current.y)] + heightDiff * 0.5 + 1; // Reduce the impact of height difference
 
-                // 调整路径代价的权重，鼓励更直接的路径
-                newCost += 1; // Reduce the impact of path length
+
                 int hashNewPoint = hashPoint(newX, newY);
                 if (costSoFar.find(hashNewPoint) == costSoFar.end() || newCost < costSoFar[hashNewPoint]) {
                     costSoFar[hashNewPoint] = newCost;
@@ -205,38 +191,9 @@ uchar curAreaHeight(const Mat& elevationMap, int width, int length, int x, int y
     all /= (width * length);
     return all;
 }
-//分割A*返回的路径
+//分割路径
 vector<vector<pixDir>> segmentPath(const vector<pixDir>& path, const Mat& elevationMap, const Mat& edgeMap)
 {
-    //vector<vector<pixDir>> segmentedPaths;
-    //vector<pixDir> currentSegment;
-    //uchar preAvgHeight = curAreaHeight(elevationMap, robot_foot_width/perPixelWidth, robot_foot_length/perPixelWidth, path[0].pos.x, path[0].pos.y);
-    //currentSegment.push_back(path[0]);
-    //for (size_t i = 1; i < path.size(); ++i) {
-    //    uchar currentHeight = elevationMap.at<uchar>(path[i].pos.y, path[i].pos.x);
-    //    uchar curAvgHeight = curAreaHeight(elevationMap, robot_foot_width/perPixelWidth, robot_foot_length/perPixelWidth, path[i].pos.x, path[i].pos.y);
-    //    if (abs(curAvgHeight - preAvgHeight)*perPixelHeight > 0.1)
-    //    {
-    //        //高度差10cm，分成一个新段
-    //        if (disBetwPix(currentSegment.front().pos, currentSegment.back().pos) < robot_foot_length)
-    //        {
-    //            //但是如果当前分段放不下一只脚，则不分成新段。
-    //           
-    //        }
-    //        else
-    //        {
-    //            segmentedPaths.push_back(currentSegment);
-    //            currentSegment.clear();
-    //        }
-    //    }
-    //    currentSegment.push_back(path[i]);
-    //    preAvgHeight = curAvgHeight;
-    //}
-
-    //if (!currentSegment.empty()) {
-    //    segmentedPaths.push_back(currentSegment);
-    //}
-    //return segmentedPaths;
     vector<vector<pixDir>> segmentedPaths;
     vector<pixDir> currentSegment;
     currentSegment.push_back(path[0]);
@@ -420,31 +377,43 @@ void short_planning(posDirect start, posDirect end, std::vector<posDirect>& Path
     Position v0 = { 1, 0 };
     
     posDirect curNode = start;
-    //Path.push_back(start);
-    while ( D > r || abs(ang) > 0.1)
+    if (D < robot_foot_length && abs(ang)<0.1)
     {
-        double da = min(D, max_line_forward);
-        Position vst;
-        if (abs(ang) > 0.1)
-        {
-            Position v1 = end.direct;
-            vst = newRotationAngle(da, v0, v1);
-        } 
-        else
-        {
-            vst = curNode.direct;
-        }
-        posDirect newNode;
-        newNode.pos.x = curNode.pos.x + da * startToEnd.x;
-        newNode.pos.y = curNode.pos.y + da * startToEnd.y;
-        newNode.direct = vst;
-        newNode.tag = 3;
-        Path.push_back(newNode);
-        curNode = newNode;
-        D = disBetweenPoints(curNode.pos, end.pos);
-        ang = angleBetweenVector(curNode.direct, end.direct);
+        curNode.pos.x = (start.pos.x + end.pos.x) / 2.0;
+        curNode.pos.y = (start.pos.y + end.pos.y) / 2.0;
+        curNode.direct = start.direct;
+        curNode.tag = 1;
+        Path.push_back(curNode);
     }
-    Path.push_back(end);
+    else
+    {
+        //Path.push_back(start);
+        while (D > r || abs(ang) > 0.1)
+        {
+            double da = min(D, max_line_forward);
+            Position vst;
+            if (abs(ang) > 0.1)
+            {
+                Position v1 = end.direct;
+                vst = newRotationAngle(da, v0, v1);
+            }
+            else
+            {
+                vst = curNode.direct;
+            }
+            posDirect newNode;
+            newNode.pos.x = curNode.pos.x + da * startToEnd.x;
+            newNode.pos.y = curNode.pos.y + da * startToEnd.y;
+            newNode.direct = vst;
+            newNode.tag = 3;
+            Path.push_back(newNode);
+            curNode = newNode;
+            D = disBetweenPoints(curNode.pos, end.pos);
+            ang = angleBetweenVector(curNode.direct, end.direct);
+        }
+        Path.push_back(end);
+    }
+   
 }
 //长距离质心轨迹规划
 void planning(posDirect start, posDirect end, std::vector<posDirect>& Path, double r = 0.1) 
@@ -469,84 +438,54 @@ void planning(posDirect start, posDirect end, std::vector<posDirect>& Path, doub
     Position spc = start.pos;
     double da;
     double ang = angleBetweenVector(start.direct, end.direct);
-    //if (D < 1.0 and ang < 0.1) {
-    //    Position startToEnd = normalizeVect(vectAtoB(start.pos, end.pos));
-    //    start.tag = 1;
-    //    Path.push_back(start);
-    //    posDirect curNode = start;
-    //    while (D >= 0.1) {
-    //        da = min(D, max_line_forward);
-    //        posDirect newNode = { {curNode.pos.x + da * startToEnd.x, curNode.pos.y + da * startToEnd.y}, curNode.direct, 1 };
-    //        if (dotVector(startToEnd, curNode.direct) < 0.1) {
-    //            newNode.tag = 2;
-    //        }
-    //        Path.push_back(newNode);
-    //        curNode = newNode;
-    //        D = disBetweenPoints(curNode.pos, end.pos);
-    //    }
-    //}
-    //else if (D < 0.1 and ang > 0.1) {
-    //    double x = start.direct.x;
-    //    double y = start.direct.y;
-    //    v1 = end.direct;
-    //    start.tag = 3;
-    //    Path.push_back(start);
-    //    while (ang > 0.1) {
-    //        da = cal_da(end.direct, vst);
-    //        vst = newRotationAngle(da, v0, v1);
-    //        posDirect newNode = { {start.pos.x, start.pos.y}, vst, 3 };
-    //        Path.push_back(newNode);
-    //        ang = angleBetweenVector(newNode.direct, end.direct);
-    //    }
-    //}
-    //else {
-        while (D>r)
-        {
-            //在当前的起点和终点之间的距离很小时结束迭代
-            //计算终点反方向矢量与终点到起点的矢量之间的夹角
-            v0 = vectAtoB(epc, spc);
-            v1 = vet;
-            da = cal_da(v0, v1);
-            //尝试一下当前的方向时顺时针运动还是逆时针运动。向哪个转向运动后的指向与当前终点到起点的矢量之间的夹角减小就用哪个方向旋转
-            //顺时针旋转da角度
 
-            vet = newRotationAngle(da, v0, v1);
-            //计算转向后朝向矢量与x轴正方向的夹角
-            v0 = { 1,0 };
-            v1 = vet;
-            a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
-            //在转向方向上从当前点前进r距离后的位置(x,y)
-            //把这个点位置记录下来，记录到终点反向序列上
-            epc = calNextPosition(Pe[ke].pos.x, Pe[ke].pos.y, a, r);
-            ke++;
-            Pe.push_back({ epc,vet });
+    while (D>r)
+    {
+        //在当前的起点和终点之间的距离很小时结束迭代
+        //计算终点反方向矢量与终点到起点的矢量之间的夹角
+        v0 = vectAtoB(epc, spc);
+        v1 = vet;
+        da = cal_da(v0, v1);
+        //尝试一下当前的方向时顺时针运动还是逆时针运动。向哪个转向运动后的指向与当前终点到起点的矢量之间的夹角减小就用哪个方向旋转
+        //顺时针旋转da角度
 
-            ///////////////////////////////////////////////////////
-            //计算起点方向矢量与起点到终点的矢量之间的夹角，起点朝向不进行反向处理
-            v0 = vectAtoB(spc, epc);
-            v1 = vst;
-            da = cal_da(v0, v1);
-            vst = newRotationAngle(da, v0, v1);
-            //计算转向后朝向矢量与x轴正方向的夹角
-            v0 = { 1,0 };
-            a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
-            spc = calNextPosition(Ps[ks].pos.x, Ps[ks].pos.y, a, r);
-            ks++;
-            Ps.push_back({ spc,vst });
+        vet = newRotationAngle(da, v0, v1);
+        //计算转向后朝向矢量与x轴正方向的夹角
+        v0 = { 1,0 };
+        v1 = vet;
+        a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
+        //在转向方向上从当前点前进r距离后的位置(x,y)
+        //把这个点位置记录下来，记录到终点反向序列上
+        epc = calNextPosition(Pe[ke].pos.x, Pe[ke].pos.y, a, r);
+        ke++;
+        Pe.push_back({ epc,vet });
 
-            D = sqrt(dotVector(vectAtoB(spc, epc), vectAtoB(spc, epc)));
-        }
-        Path.insert(Path.end(), Ps.begin(), Ps.end());
-        int peSize = Pe.size();
-        posDirect nextNode;
-        for (int i = peSize - 2; i >= 0; i--) {
-            nextNode.pos = Pe[i].pos;
-            nextNode.direct = { -Pe[i].direct.x, -Pe[i].direct.y };
-            nextNode.direct = normalizeVect(nextNode.direct);
-            nextNode.tag = Pe[i].tag;
-            Path.push_back(nextNode);
-        }
-    //}
+        ///////////////////////////////////////////////////////
+        //计算起点方向矢量与起点到终点的矢量之间的夹角，起点朝向不进行反向处理
+        v0 = vectAtoB(spc, epc);
+        v1 = vst;
+        da = cal_da(v0, v1);
+        vst = newRotationAngle(da, v0, v1);
+        //计算转向后朝向矢量与x轴正方向的夹角
+        v0 = { 1,0 };
+        a = sgnOfk(v0, v1) * angleBetweenVector(v0, v1);
+        spc = calNextPosition(Ps[ks].pos.x, Ps[ks].pos.y, a, r);
+        ks++;
+        Ps.push_back({ spc,vst });
+
+        D = sqrt(dotVector(vectAtoB(spc, epc), vectAtoB(spc, epc)));
+    }
+    Path.insert(Path.end(), Ps.begin(), Ps.end());
+    int peSize = Pe.size();
+    posDirect nextNode;
+    for (int i = peSize - 2; i >= 0; i--) {
+        nextNode.pos = Pe[i].pos;
+        nextNode.direct = { -Pe[i].direct.x, -Pe[i].direct.y };
+        nextNode.direct = normalizeVect(nextNode.direct);
+        nextNode.tag = Pe[i].tag;
+        Path.push_back(nextNode);
+    }
+    
     double scTH = 1;
     tagCurOrLine(Path, scTH);
 }
@@ -742,52 +681,9 @@ int main()
 
         vector<posDirect>  leftPath, rightPath;
 
-        //for (size_t i = 0; i < pathPoints.size() - 1; ++i) {
-        //    posDirect startPos = { {pathPoints[i].pos.x*perPixelWidth,pathPoints[i].pos.y*perPixelWidth},{pathPoints[i].dir.x,pathPoints[i].dir.y},0 };
-        //    posDirect endPos = { {pathPoints[i+1].pos.x*perPixelWidth,pathPoints[i+1].pos.y*perPixelWidth},{pathPoints[i+1].dir.x,pathPoints[i+1].dir.y},0 };
-        //    //规划质心的轨迹
-        //    planning(startPos, endPos, plannedPath);
-        //}
-        //for (size_t i = 0; i < pathPoints.size() - 2; ++i)
-        //{
-        //    posDirect startPos;
-        //    startPos.pos = { pathPoints[i].pos.x * perPixelWidth,pathPoints[i].pos.y * perPixelWidth };
-        //    startPos.direct = { (float)(pathPoints[i+1].pos.x-pathPoints[i].pos.x),(float)(pathPoints[i+1].pos.y- pathPoints[i].pos.y )};
-        //    startPos.tag = 0;
-        //    posDirect endPos;
-        //    endPos.pos = { pathPoints[i+1].pos.x * perPixelWidth,pathPoints[i+1].pos.y * perPixelWidth };
-        //    endPos.direct = { (float)(pathPoints[i + 2].pos.x - pathPoints[i].pos.x),(float)(pathPoints[i + 2].pos.y - pathPoints[i+2].pos.y) };
-        //    startPos.tag = 0;
-        //    //posDirect endPos = { {pathPoints[i + 1].pos.x * perPixelWidth,pathPoints[i + 1].pos.y * perPixelWidth},{pathPoints[i + 1].dir.x,pathPoints[i + 1].dir.y},0 };
-        //    //规划质心的轨迹
-        //    planning(startPos, endPos, plannedPath);
-        //}
-        //posDirect startPos = { {pathPoints[0].pos.x * perPixelWidth,pathPoints[0].pos.y * perPixelWidth},{pathPoints[0].dir.x,pathPoints[0].dir.y},0 };
-        //posDirect endPos = { {pathPoints[pathPoints.size() - 1].pos.x * perPixelWidth,pathPoints[pathPoints.size() - 1].pos.y * perPixelWidth},{pathPoints[pathPoints.size() - 1].dir.x,pathPoints[pathPoints.size() - 1].dir.y},0 };
-
-        //planning(startPos, endPos, plannedPath);
         //规划双足的落脚点
         //feetPlanning(centerPath, leftPath, rightPath);
 
-        // Visualization
-    //    vector<double> pathX, pathY, leftX, leftY, rightX, rightY;
-    //    for (const auto& p : centerPath) {
-    //        pathX.push_back(p.pos.x);
-    //        pathY.push_back(p.pos.y);
-    //    }
-    //    for (const auto& p : leftPath) {
-    //        leftX.push_back(p.pos.x);
-    //        leftY.push_back(p.pos.y);
-    //    }
-    //    for (const auto& p : rightPath) {
-    //        rightX.push_back(p.pos.x);
-    //        rightY.push_back(p.pos.y);
-    //    }
-    //    plt::plot(pathX, pathY, "r-");
-    //    plt::plot(leftX, leftY, "g-");
-    //    plt::plot(rightX, rightY, "b-");
-    //    plt::show();
-    //}
         Mat visImage;
         cvtColor(elevationMap, visImage, COLOR_GRAY2BGR);
 
@@ -829,11 +725,11 @@ int main()
             visImage.at<Vec3b>(p.pos.y, p.pos.x) = Vec3b(255, 0, 255);  // Mark path with red color
 
         }
-        //for (const auto& p : segPaths[3])
-        //{
-        //    visImage.at<Vec3b>(p.pos.y, p.pos.x) = Vec3b(0, 255, 0);  // Mark path with red color
+        for (const auto& p : segPaths[3])
+        {
+            visImage.at<Vec3b>(p.pos.y, p.pos.x) = Vec3b(0, 255, 0);  // Mark path with red color
 
-        //}
+        }
         //for (const auto& p : segPaths[4])
         //{
         //    visImage.at<Vec3b>(p.pos.y, p.pos.x) = Vec3b(255, 192, 203);  // Mark path with red color
